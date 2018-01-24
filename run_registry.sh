@@ -10,7 +10,6 @@ KUBECTL=kubectl
 DMACHINE=docker-machine
 MINIKUBE=${MINIKUBE:-minikube}
 OBJECTS="rs.kube-registry-v0.yaml svc.kube-registry.yaml ds.kube-registry-proxy.yaml"
-DEFAULT_NS="componentes comun geolocalizacion fundacional"
 CLEAN=${CLEAN:-0}
 MACHINE=$(uname -o)
 
@@ -27,7 +26,7 @@ is_linux(){
 }
 
 is_running(){
-	minikube status | grep "Running" > /dev/null
+	$MINIKUBE status | grep "Running" > /dev/null
 	return $?
 }
 
@@ -40,7 +39,7 @@ check_context(){
 	CONTEXT=$($KUBECTL config current-context)
 	if [ "$CONTEXT" != "minikube" ]
 	then
-		printf "$RED- ERROR: $KUBECTL no esta usando el contexto minikube. $RESET\n"
+		printf "$RED- ERROR: $KUBECTL context is not set to minikube. $RESET\n"
 		exit -1
 	fi
 }
@@ -52,7 +51,7 @@ get_pod(){
 }
 
 download_images(){
-	printf "$YELLOW* Descargando imagenes requeridas por el registro$RESET\n"
+	printf "$YELLOW* Downloading register images$RESET\n"
 	$MINIKUBE ssh << EOF
 docker pull registry:2.5.1
 docker pull gcr.io/google_containers/kube-registry-proxy:0.4
@@ -64,12 +63,12 @@ echo
 clean(){
 	if [ $CLEAN -eq 1 ]
 	then
-		printf "$YELLOW* Eliminando objectos antiguos en kubernetes$RESET\n"
+		printf "$YELLOW* Deleting old objects from kubernetes$RESET\n"
 		for object in $OBJECTS
 		do
 			name=$(basename $object .yaml)
 			file="$RESOURCESPATH/$object"
-			printf "$RED- Eliminando objeto $name$RESET\n"
+			printf "$RED- Deleting $name$RESET\n"
 			$KUBECTL delete -f $file > /dev/null
 		done
 		echo
@@ -77,30 +76,20 @@ clean(){
 }
 
 create(){
-	printf "$YELLOW* Creando nuevos objetos$RESET\n"
-	for ns in $DEFAULT_NS
-	do
-		if $KUBECTL get namespace $ns > /dev/null 2>&1
-		then
-			printf "$BLUE- El namespace \"$ns\" ya existe$RESET\n"
-		else
-			printf "$BLUE- Creando namespace \"$ns\"$RESET\n"
-			$KUBECTL create namespace $ns > /dev/null
-		fi
-	done
+	printf "$YELLOW* Creating new object$RESET\n"
 	for object in $OBJECTS
 	do
 		name=$(basename $object .yaml)
 		file="$RESOURCESPATH/$object"
 		if $KUBECTL get -f ./$file > /dev/null 2>&1
 		then
-			printf "$BLUE- El objeto \"$name\" ya existe$RESET\n"
+			printf "$BLUE- The object \"$name\" already exists$RESET\n"
 		else
-			printf "$BLUE- Creando objecto \"$name\"$RESET\n"
+			printf "$BLUE- Creating object \"$name\"$RESET\n"
 			$KUBECTL create -f $file > /dev/null
 			if [ $? -ne 0 ]
 			then
-				printf "$RED- ERROR creando objeto \"$name\"$RESET\n"
+				printf "$RED- ERROR creating object \"$name\"$RESET\n"
 				exit -1
 			fi
 		fi
@@ -109,7 +98,7 @@ create(){
 }
 
 wait_for_pod(){
-	printf "$YELLOW* Esperando que el pod se inicie $BLUE"
+	printf "$YELLOW* Waiting for pod to start $BLUE"
 	get_pod
 	while [ -z "$POD" ]
 	do
@@ -121,7 +110,7 @@ wait_for_pod(){
 }
 
 create_docker_tunnel(){
-	printf "$YELLOW* Creando tunel en el docker-nachine$RESET\n"
+	printf "$YELLOW* Creating tunnel in docker machine$RESET\n"
 	DOCKERIP=$($DMACHINE ip)
 	CERTPATH=$(cygpath $DOCKER_CERT_PATH/id_rsa)
 	ssh -fNM -S /tmp/.mk.control.socket -o ExitOnForwardFailure=yes -T -i $CERTPATH -R 5000:localhost:5000 docker@$DOCKERIP
@@ -133,15 +122,15 @@ create_docker_tunnel(){
 }
 
 close_docker_tunnel(){
-	printf "\n$YELLOW* Cerrando tunel ssh a maquina docker$RESET\n"
+	printf "\n$YELLOW* Closing tunnel in docker machine $RESET\n"
 	DOCKERIP=$($DMACHINE ip)
 	CERTPATH=$(cygpath $DOCKER_CERT_PATH/id_rsa)
 	ssh -S /tmp/.mk.control.socket -i $CERTPATH -O exit docker@$DOCKERIP
 }
 
 forward_port(){
-	printf "$YELLOW* Forwardeando puerto 5000 del registro $RESET\n
-$GREEN* Para terminar presione control-C$RESET\n\n"
+	printf "$YELLOW* Forwarding port 5000 in registry $RESET\n
+$GREEN* To end, press ctrl-C  $RESET\n\n"
 	$KUBECTL port-forward $POD --namespace kube-system 5000:5000
 }
 
@@ -150,7 +139,7 @@ $GREEN* Para terminar presione control-C$RESET\n\n"
 is_running
 if [ $? -ne 0 ]
 then
-	printf $RED"ERROR: Minikube no esta corriendo $RESET\n"
+	printf $RED"ERROR: Minikube is not running $RESET\n"
 	exit -1
 fi
 check_context
